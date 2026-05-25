@@ -1324,8 +1324,9 @@ export default function App({ currentUser, initialCanvasId = "", onNavigateToCan
       <div className="min-h-screen px-4 py-5 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-[1600px]">
           <header className="rounded-[2rem] border border-white/10 bg-slate-900/70 p-5 shadow-panel backdrop-blur-sm">
-            <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-              <div className="max-w-3xl">
+            <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-6 2xl:flex-row 2xl:items-start 2xl:justify-between">
+                <div className="max-w-3xl">
                 <p className="text-xs font-semibold uppercase tracking-[0.45em] text-slate-500">
                   Synapse Workspace
                 </p>
@@ -1334,10 +1335,11 @@ export default function App({ currentUser, initialCanvasId = "", onNavigateToCan
                 </h1>
                 <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
                   Reopen saved canvases from the dashboard, collaborate over Socket.io rooms,
-                  generate infrastructure output, and now export the rendered graph as PNG or SVG.
+                  generate infrastructure output, and export polished diagrams or IaC blueprints from one workspace.
                 </p>
+                </div>
 
-                <div className="mt-5 flex flex-wrap items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3 2xl:max-w-[480px] 2xl:justify-end">
                   <span
                     className={[
                       "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.24em]",
@@ -1378,160 +1380,165 @@ export default function App({ currentUser, initialCanvasId = "", onNavigateToCan
                 </div>
               </div>
 
-              <div className="grid gap-3 md:grid-cols-[auto_minmax(0,260px)_auto_auto_auto_auto_auto] xl:min-w-[1360px]">
-                {onOpenDashboard ? (
-                  <button
-                    className="inline-flex items-center justify-center gap-2 rounded-[1.4rem] border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-white transition hover:border-cyan-300/30 hover:bg-white/10"
-                    onClick={() => onOpenDashboard()}
-                    type="button"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                    Dashboard
-                  </button>
-                ) : null}
+              <div className="rounded-[1.7rem] border border-white/10 bg-slate-950/45 p-4 sm:p-5">
+                <div className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-stretch 2xl:justify-between">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch 2xl:min-w-0 2xl:flex-1">
+                      {onOpenDashboard ? (
+                        <button
+                          className="inline-flex items-center justify-center gap-2 rounded-[1.4rem] border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-white transition hover:border-cyan-300/30 hover:bg-white/10 lg:shrink-0"
+                          onClick={() => onOpenDashboard()}
+                          type="button"
+                        >
+                          <ArrowLeft className="h-4 w-4" />
+                          Dashboard
+                        </button>
+                      ) : null}
 
-                <label className="rounded-[1.4rem] border border-white/10 bg-slate-950/80 px-4 py-3">
-                  <span className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
-                    Canvas ID
-                  </span>
-                  <input
-                    className="mt-2 w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500"
-                    onChange={(event) => setCanvasId(event.target.value)}
-                    onKeyDown={handleCanvasIdKeyDown}
-                    placeholder="Paste a MongoDB canvas id"
-                    value={canvasId}
-                  />
-                </label>
+                      <label className="min-w-0 rounded-[1.4rem] border border-white/10 bg-slate-950/80 px-4 py-3 lg:flex-1">
+                        <span className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
+                          Canvas ID
+                        </span>
+                        <input
+                          className="mt-2 w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500"
+                          onChange={(event) => setCanvasId(event.target.value)}
+                          onKeyDown={handleCanvasIdKeyDown}
+                          placeholder="Paste a MongoDB canvas id"
+                          value={canvasId}
+                        />
+                      </label>
 
-                <button
-                  className="inline-flex items-center justify-center gap-2 rounded-[1.4rem] border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-white transition hover:border-cyan-300/30 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={isBusy}
-                  onClick={() => void loadCanvas()}
-                  type="button"
-                >
-                  {isLoadingCanvas ? (
-                    <LoaderCircle className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCcw className="h-4 w-4" />
-                  )}
-                  Load Canvas
-                </button>
-
-                <div className="relative" ref={exportMenuRef}>
-                  <button
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-[1.4rem] border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-white transition hover:border-cyan-300/30 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={isExporting || !nodes.length}
-                    onClick={() => setIsExportMenuOpen((currentValue) => !currentValue)}
-                    type="button"
-                  >
-                    {isExporting ? (
-                      <LoaderCircle className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Download className="h-4 w-4" />
-                    )}
-                    Export Diagram
-                    <ChevronDown className={[
-                      "h-4 w-4 transition",
-                      isExportMenuOpen ? "rotate-180" : "rotate-0",
-                    ].join(" ")} />
-                  </button>
-
-                  {isExportMenuOpen ? (
-                    <div className="absolute right-0 z-20 mt-2 w-48 rounded-[1.2rem] border border-white/10 bg-slate-950/95 p-2 shadow-panel backdrop-blur-sm">
                       <button
-                        className="flex w-full items-center justify-between rounded-[1rem] px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-white/5"
-                        onClick={() => void handleExportDiagram("png")}
+                        className="inline-flex items-center justify-center gap-2 rounded-[1.4rem] border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-white transition hover:border-cyan-300/30 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60 lg:shrink-0"
+                        disabled={isBusy}
+                        onClick={() => void loadCanvas()}
                         type="button"
                       >
-                        Download PNG
-                        <span className="text-xs uppercase tracking-[0.24em] text-slate-500">2x</span>
-                      </button>
-                      <button
-                        className="mt-1 flex w-full items-center justify-between rounded-[1rem] px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-white/5"
-                        onClick={() => void handleExportDiagram("svg")}
-                        type="button"
-                      >
-                        Download SVG
-                        <span className="text-xs uppercase tracking-[0.24em] text-slate-500">vector</span>
+                        {isLoadingCanvas ? (
+                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <RefreshCcw className="h-4 w-4" />
+                        )}
+                        Load Canvas
                       </button>
                     </div>
-                  ) : null}
-                </div>
 
-                <div className="relative" ref={blueprintMenuRef}>
-                  <button
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-[1.4rem] border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-white transition hover:border-cyan-300/30 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={isExportingBlueprint}
-                    onClick={() => setIsBlueprintMenuOpen((currentValue) => !currentValue)}
-                    type="button"
-                  >
-                    {isExportingBlueprint ? (
-                      <LoaderCircle className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <FileCode2 className="h-4 w-4" />
-                    )}
-                    Export Blueprint
-                    <ChevronDown
-                      className={[
-                        "h-4 w-4 transition",
-                        isBlueprintMenuOpen ? "rotate-180" : "rotate-0",
-                      ].join(" ")}
-                    />
-                  </button>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap 2xl:justify-end">
+                      <div className="relative w-full sm:min-w-[190px] sm:flex-1 2xl:flex-none" ref={exportMenuRef}>
+                        <button
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-[1.4rem] border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-white transition hover:border-cyan-300/30 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={isExporting || !nodes.length}
+                          onClick={() => setIsExportMenuOpen((currentValue) => !currentValue)}
+                          type="button"
+                        >
+                          {isExporting ? (
+                            <LoaderCircle className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Download className="h-4 w-4" />
+                          )}
+                          Export Diagram
+                          <ChevronDown className={[
+                            "h-4 w-4 transition",
+                            isExportMenuOpen ? "rotate-180" : "rotate-0",
+                          ].join(" ")} />
+                        </button>
 
-                  {isBlueprintMenuOpen ? (
-                    <div className="absolute right-0 z-20 mt-2 w-64 rounded-[1.2rem] border border-white/10 bg-slate-950/95 p-2 shadow-panel backdrop-blur-sm">
+                        {isExportMenuOpen ? (
+                          <div className="absolute left-0 right-0 z-20 mt-2 rounded-[1.2rem] border border-white/10 bg-slate-950/95 p-2 shadow-panel backdrop-blur-sm sm:left-auto sm:right-0 sm:w-48">
+                            <button
+                              className="flex w-full items-center justify-between rounded-[1rem] px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-white/5"
+                              onClick={() => void handleExportDiagram("png")}
+                              type="button"
+                            >
+                              Download PNG
+                              <span className="text-xs uppercase tracking-[0.24em] text-slate-500">2x</span>
+                            </button>
+                            <button
+                              className="mt-1 flex w-full items-center justify-between rounded-[1rem] px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-white/5"
+                              onClick={() => void handleExportDiagram("svg")}
+                              type="button"
+                            >
+                              Download SVG
+                              <span className="text-xs uppercase tracking-[0.24em] text-slate-500">vector</span>
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="relative w-full sm:min-w-[220px] sm:flex-1 2xl:flex-none" ref={blueprintMenuRef}>
+                        <button
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-[1.4rem] border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-white transition hover:border-cyan-300/30 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={isExportingBlueprint}
+                          onClick={() => setIsBlueprintMenuOpen((currentValue) => !currentValue)}
+                          type="button"
+                        >
+                          {isExportingBlueprint ? (
+                            <LoaderCircle className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <FileCode2 className="h-4 w-4" />
+                          )}
+                          Export Blueprint
+                          <ChevronDown
+                            className={[
+                              "h-4 w-4 transition",
+                              isBlueprintMenuOpen ? "rotate-180" : "rotate-0",
+                            ].join(" ")}
+                          />
+                        </button>
+
+                        {isBlueprintMenuOpen ? (
+                          <div className="absolute left-0 right-0 z-20 mt-2 rounded-[1.2rem] border border-white/10 bg-slate-950/95 p-2 shadow-panel backdrop-blur-sm sm:left-auto sm:right-0 sm:w-64">
+                            <button
+                              className="flex w-full items-center justify-between rounded-[1rem] px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-white/5"
+                              onClick={() => handleExportBlueprint("docker")}
+                              type="button"
+                            >
+                              Download Docker Compose (.yml)
+                              <span className="text-xs uppercase tracking-[0.24em] text-slate-500">yaml</span>
+                            </button>
+                            <button
+                              className="mt-1 flex w-full items-center justify-between rounded-[1rem] px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-white/5"
+                              onClick={() => handleExportBlueprint("terraform")}
+                              type="button"
+                            >
+                              Download Terraform Blueprint (.tf)
+                              <span className="text-xs uppercase tracking-[0.24em] text-slate-500">iac</span>
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+
                       <button
-                        className="flex w-full items-center justify-between rounded-[1rem] px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-white/5"
-                        onClick={() => handleExportBlueprint("docker")}
+                        className="inline-flex items-center justify-center gap-2 rounded-[1.4rem] border border-cyan-300/30 bg-cyan-400/15 px-5 py-3 text-sm font-semibold text-cyan-50 transition hover:border-cyan-200/50 hover:bg-cyan-400/20 disabled:cursor-not-allowed disabled:opacity-60 sm:min-w-[190px]"
+                        disabled={isBusy}
+                        onClick={() => void handleSaveArchitecture()}
                         type="button"
                       >
-                        Download Docker Compose (.yml)
-                        <span className="text-xs uppercase tracking-[0.24em] text-slate-500">yaml</span>
+                        {isSaving ? (
+                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="h-4 w-4" />
+                        )}
+                        Save Architecture
                       </button>
+
                       <button
-                        className="mt-1 flex w-full items-center justify-between rounded-[1rem] px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-white/5"
-                        onClick={() => handleExportBlueprint("terraform")}
+                        className="inline-flex items-center justify-center gap-2 rounded-[1.4rem] border border-emerald-300/30 bg-emerald-400/15 px-5 py-3 text-sm font-semibold text-emerald-50 transition hover:border-emerald-200/50 hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-60 sm:min-w-[190px]"
+                        disabled={isBusy}
+                        onClick={() => void handleGenerateInfrastructure()}
                         type="button"
                       >
-                        Download Terraform Blueprint (.tf)
-                        <span className="text-xs uppercase tracking-[0.24em] text-slate-500">iac</span>
+                        {isGeneratingInfra ? (
+                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <FileCode2 className="h-4 w-4" />
+                        )}
+                        Generate Infra
                       </button>
                     </div>
-                  ) : null}
-                </div>
+                  </div>
 
-                <button
-                  className="inline-flex items-center justify-center gap-2 rounded-[1.4rem] border border-cyan-300/30 bg-cyan-400/15 px-5 py-3 text-sm font-semibold text-cyan-50 transition hover:border-cyan-200/50 hover:bg-cyan-400/20 disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={isBusy}
-                  onClick={() => void handleSaveArchitecture()}
-                  type="button"
-                >
-                  {isSaving ? (
-                    <LoaderCircle className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Save className="h-4 w-4" />
-                  )}
-                  Save Architecture
-                </button>
-
-                <button
-                  className="inline-flex items-center justify-center gap-2 rounded-[1.4rem] border border-emerald-300/30 bg-emerald-400/15 px-5 py-3 text-sm font-semibold text-emerald-50 transition hover:border-emerald-200/50 hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={isBusy}
-                  onClick={() => void handleGenerateInfrastructure()}
-                  type="button"
-                >
-                  {isGeneratingInfra ? (
-                    <LoaderCircle className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <FileCode2 className="h-4 w-4" />
-                  )}
-                  Generate Infra
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+                  <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
               <label className="rounded-[1.5rem] border border-white/10 bg-slate-950/80 px-4 py-3">
                 <span className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
                   Architecture Title
@@ -1546,12 +1553,15 @@ export default function App({ currentUser, initialCanvasId = "", onNavigateToCan
 
               <div
                 className={[
-                  "flex items-start gap-3 rounded-[1.5rem] border px-4 py-3 text-sm leading-6",
+                  "min-w-0 flex items-start gap-3 rounded-[1.5rem] border px-4 py-3 text-sm leading-6",
                   noticeAppearance.className,
                 ].join(" ")}
               >
                 <NoticeIcon className={["mt-0.5 h-5 w-5 shrink-0", noticeAppearance.iconClassName].join(" ")} />
                 <p>{notice.text}</p>
+              </div>
+                  </div>
+                </div>
               </div>
             </div>
           </header>
