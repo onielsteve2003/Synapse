@@ -13,4 +13,5 @@ module.exports = {
     process.env.MONGODB_URI ||
     (isDockerRuntime ? "mongodb://synapse-db:27017/synapse" : "mongodb://127.0.0.1:27017/synapse"),
   CLIENT_ORIGIN: process.env.CLIENT_ORIGIN || "http://localhost:5173",
+  JWT_SECRET: process.env.JWT_SECRET || "synapse-dev-jwt-secret-change-me",
 };

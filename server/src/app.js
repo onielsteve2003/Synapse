@@ -2,6 +2,7 @@ const cors = require("cors");
 const express = require("express");
 const helmet = require("helmet");
 
+const authRoutes = require("./routes/authRoutes");
 const canvasRoutes = require("./routes/canvasRoutes");
 const env = require("./config/env");
 const healthRoutes = require("./routes/health.routes");
@@ -25,6 +26,7 @@ app.get("/", (_req, res) => {
 });
 
 app.use("/api", healthRoutes);
+app.use("/api/auth", authRoutes);
 app.use("/api/canvases", canvasRoutes);
 
 app.use((req, res) => {

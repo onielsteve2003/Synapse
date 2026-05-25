@@ -7,8 +7,10 @@ import {
   Download,
   FileCode2,
   LoaderCircle,
+  LogOut,
   RefreshCcw,
   Save,
+  ShieldCheck,
   Sparkles,
   TriangleAlert,
 } from "lucide-react";
@@ -256,7 +258,7 @@ function isTextInputActive() {
   );
 }
 
-export default function App({ initialCanvasId = "", onNavigateToCanvas, onOpenDashboard }) {
+export default function App({ currentUser, initialCanvasId = "", onNavigateToCanvas, onOpenDashboard, onLogout }) {
   const [canvasId, setCanvasId] = useState(() => initialCanvasId || getInitialCanvasId());
   const [joinedCanvasId, setJoinedCanvasId] = useState("");
   const [title, setTitle] = useState("Synapse Workspace");
@@ -1106,6 +1108,24 @@ export default function App({ initialCanvasId = "", onNavigateToCanvas, onOpenDa
                     <span className="inline-flex items-center rounded-full border border-white/10 bg-slate-950/70 px-3 py-1.5 text-xs font-medium text-slate-300">
                       Room {joinedCanvasId.slice(0, 8)}...
                     </span>
+                  ) : null}
+
+                  {currentUser ? (
+                    <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/70 px-3 py-1.5 text-xs font-medium text-slate-200">
+                      <ShieldCheck className="h-3.5 w-3.5 text-emerald-200" />
+                      {currentUser.name} · {currentUser.email}
+                    </span>
+                  ) : null}
+
+                  {onLogout ? (
+                    <button
+                      className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:border-rose-300/30 hover:bg-white/10"
+                      onClick={onLogout}
+                      type="button"
+                    >
+                      <LogOut className="h-3.5 w-3.5" />
+                      Log Out
+                    </button>
                   ) : null}
                 </div>
               </div>

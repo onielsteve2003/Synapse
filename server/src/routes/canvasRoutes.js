@@ -9,8 +9,11 @@ const {
   getCanvasById,
   updateCanvas,
 } = require("../controllers/canvasController");
+const { authenticateRequest } = require("../middleware/auth");
 
 const router = express.Router();
+
+router.use(authenticateRequest);
 
 router.get("/", getAllCanvases);
 router.post("/", createCanvas);

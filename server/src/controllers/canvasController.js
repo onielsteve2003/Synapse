@@ -18,7 +18,6 @@ const DEFAULT_TECH_STACKS = {
   database: ["MongoDB", "Mongoose"],
   cache: ["Redis", "Pub/Sub"],
 };
-const DEFAULT_OWNER_ID = "507f1f77bcf86cd799439011";
 
 function cleanCommandText(value) {
   return String(value || "")
@@ -110,6 +109,13 @@ function handleCanvasError(error, res) {
   return res.status(500).json({
     message: "An unexpected error occurred while processing the canvas request.",
   });
+}
+
+function buildOwnedCanvasQuery(ownerId, canvasId) {
+  return {
+    _id: canvasId,
+    owner: ownerId,
+  };
 }
 
 function emitCanvasUpdated(io, canvas) {
@@ -296,18 +302,11 @@ function applyAIPlanToCanvas(canvas, plan) {
 
 async function createCanvas(req, res) {
   try {
-    const { title, owner } = req.body;
-    const resolvedOwner = owner || DEFAULT_OWNER_ID;
-
-    if (!isValidObjectId(resolvedOwner)) {
-      return res.status(400).json({
-        message: "A valid owner ObjectId is required to create a canvas.",
-      });
-    }
+    const { title } = req.body;
 
     const canvas = await Canvas.create({
       title: typeof title === "string" && title.trim() ? title.trim() : "Untitled Canvas",
-      owner: resolvedOwner,
+      owner: req.user.id,
       nodes: [],
       edges: [],
     });
@@ -318,9 +317,9 @@ async function createCanvas(req, res) {
   }
 }
 
-async function getAllCanvases(_req, res) {
+async function getAllCanvases(req, res) {
   try {
-    const canvases = await Canvas.find({}).sort({ lastModified: -1 }).lean();
+    const canvases = await Canvas.find({ owner: req.user.id }).sort({ lastModified: -1 }).lean();
 
     return res.status(200).json(canvases);
   } catch (error) {
@@ -338,7 +337,7 @@ async function getCanvasById(req, res) {
       });
     }
 
-    const canvas = await Canvas.findById(id).lean();
+    const canvas = await Canvas.findOne(buildOwnedCanvasQuery(req.user.id, id)).lean();
 
     if (!canvas) {
       return res.status(404).json({
@@ -401,7 +400,7 @@ async function updateCanvas(req, res) {
       });
     }
 
-    const canvas = await Canvas.findByIdAndUpdate(id, updatePayload, {
+    const canvas = await Canvas.findOneAndUpdate(buildOwnedCanvasQuery(req.user.id, id), updatePayload, {
       new: true,
       runValidators: true,
     });
@@ -428,7 +427,7 @@ async function generateInfrastructure(req, res) {
       });
     }
 
-    const canvas = await Canvas.findById(id).lean();
+    const canvas = await Canvas.findOne(buildOwnedCanvasQuery(req.user.id, id)).lean();
 
     if (!canvas) {
       return res.status(404).json({
@@ -452,7 +451,7 @@ async function deleteCanvas(req, res) {
       });
     }
 
-    const canvas = await Canvas.findByIdAndDelete(id).lean();
+    const canvas = await Canvas.findOneAndDelete(buildOwnedCanvasQuery(req.user.id, id)).lean();
 
     if (!canvas) {
       return res.status(404).json({
@@ -486,7 +485,7 @@ async function runAICommand(req, res) {
       });
     }
 
-    const canvas = await Canvas.findById(id);
+    const canvas = await Canvas.findOne(buildOwnedCanvasQuery(req.user.id, id));
 
     if (!canvas) {
       return res.status(404).json({

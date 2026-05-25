@@ -1,22 +1,69 @@
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/$/, "");
+let authToken = "";
+
+function notifyUnauthorized() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("synapse:unauthorized"));
+  }
+}
+
+export function setAPIAuthToken(token) {
+  authToken = typeof token === "string" ? token.trim() : "";
+}
 
 async function request(path, options = {}) {
+  const headers = {
+    "Content-Type": "application/json",
+    ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    ...(options.headers || {}),
+  };
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
+    headers,
     ...options,
   });
 
   const rawBody = await response.text();
-  const data = rawBody ? JSON.parse(rawBody) : null;
+  let data = null;
+
+  if (rawBody) {
+    try {
+      data = JSON.parse(rawBody);
+    } catch (_error) {
+      data = rawBody;
+    }
+  }
 
   if (!response.ok) {
-    throw new Error(data?.message || `API request failed with status ${response.status}.`);
+    const error = new Error(
+      typeof data === "object" && data !== null
+        ? data?.message || `API request failed with status ${response.status}.`
+        : `API request failed with status ${response.status}.`,
+    );
+
+    error.status = response.status;
+
+    if (response.status === 401) {
+      notifyUnauthorized();
+    }
+
+    throw error;
   }
 
   return data;
+}
+
+export function registerUser(payload) {
+  return request("/auth/register", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function loginUser(payload) {
+  return request("/auth/login", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function getCanvas(canvasId) {

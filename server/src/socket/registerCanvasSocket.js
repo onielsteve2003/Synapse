@@ -1,3 +1,9 @@
+const mongoose = require("mongoose");
+
+const Canvas = require("../models/Canvas");
+const User = require("../models/User");
+const { extractToken, getSafeUser, verifyAuthToken } = require("../utils/authToken");
+
 function getCanvasId(payload) {
   if (typeof payload === "string") {
     return payload.trim();
@@ -10,15 +16,64 @@ function getCanvasId(payload) {
   return "";
 }
 
+function getSocketToken(socket) {
+  return extractToken(socket.handshake.auth?.token || socket.handshake.headers?.authorization);
+}
+
 function registerCanvasSocket(io) {
+  io.use(async (socket, next) => {
+    const token = getSocketToken(socket);
+
+    if (!token) {
+      next(new Error("Authentication required."));
+      return;
+    }
+
+    try {
+      const payload = verifyAuthToken(token);
+      const user = await User.findById(payload.sub).lean();
+
+      if (!user) {
+        next(new Error("Authentication failed."));
+        return;
+      }
+
+      socket.data.user = getSafeUser(user);
+      next();
+    } catch (_error) {
+      next(new Error("Authentication failed."));
+    }
+  });
+
   io.on("connection", (socket) => {
     console.log(`Socket connected: ${socket.id}`);
     socket.emit("server:ready", { socketId: socket.id });
 
-    function joinCanvasRoom(payload) {
+    async function joinCanvasRoom(payload) {
       const canvasId = getCanvasId(payload);
 
       if (!canvasId) {
+        return;
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(canvasId)) {
+        socket.emit("canvas:error", {
+          canvasId,
+          message: "A valid canvas id is required.",
+        });
+        return;
+      }
+
+      const canvasExists = await Canvas.exists({
+        _id: canvasId,
+        owner: socket.data.user.id,
+      });
+
+      if (!canvasExists) {
+        socket.emit("canvas:error", {
+          canvasId,
+          message: "Canvas not found.",
+        });
         return;
       }
 
@@ -34,7 +89,7 @@ function registerCanvasSocket(io) {
     function broadcastNodeDrag(payload) {
       const canvasId = getCanvasId(payload);
 
-      if (!canvasId || !payload?.nodeId || !payload?.position) {
+      if (!canvasId || canvasId !== socket.data.canvasId || !payload?.nodeId || !payload?.position) {
         return;
       }
 
@@ -48,7 +103,7 @@ function registerCanvasSocket(io) {
     function broadcastCanvasUpdate(payload) {
       const canvasId = getCanvasId(payload);
 
-      if (!canvasId) {
+      if (!canvasId || canvasId !== socket.data.canvasId) {
         return;
       }
 
@@ -73,8 +128,12 @@ function registerCanvasSocket(io) {
       socket.to(canvasId).emit("canvas-updated", update);
     }
 
-    socket.on("join-canvas", joinCanvasRoom);
-    socket.on("canvas:join", joinCanvasRoom);
+    socket.on("join-canvas", (payload) => {
+      void joinCanvasRoom(payload);
+    });
+    socket.on("canvas:join", (payload) => {
+      void joinCanvasRoom(payload);
+    });
     socket.on("node-drag", broadcastNodeDrag);
     socket.on("canvas:node:moved", broadcastNodeDrag);
     socket.on("canvas-updated", broadcastCanvasUpdate);
