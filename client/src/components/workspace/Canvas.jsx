@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import EdgeOverlay from "../EdgeOverlay";
+import { getInitials, hexToRgba } from "../../utils/presenceAppearance";
 import Node, { getNodeDimensions } from "./Node";
 
 function clamp(value, min, max) {
@@ -22,6 +23,7 @@ function assignRef(ref, value) {
 
 export default function Canvas({
   canvasId,
+  collaboratorCursors,
   connectingSourceId,
   edges,
   nodes,
@@ -32,6 +34,7 @@ export default function Canvas({
   onResizeNode,
   onSelectNode,
   onSelectEdge,
+  onSurfacePointerMove,
   onStartConnection,
   selectedEdgeId,
   selectedNodeId,
@@ -201,16 +204,23 @@ export default function Canvas({
   }
 
   function handleCanvasPointerMove(event) {
-    if (!connectingSourceId || !canvasRef.current || dragStateRef.current) {
+    if (!canvasRef.current || dragStateRef.current) {
       return;
     }
 
     const rect = canvasRef.current.getBoundingClientRect();
-
-    setPointerPosition({
+    const nextPointerPosition = {
       x: clamp(event.clientX - rect.left, 0, rect.width),
       y: clamp(event.clientY - rect.top, 0, rect.height),
-    });
+    };
+
+    onSurfacePointerMove?.(nextPointerPosition);
+
+    if (!connectingSourceId) {
+      return;
+    }
+
+    setPointerPosition(nextPointerPosition);
   }
 
   const previewConnection = (() => {
@@ -274,6 +284,50 @@ export default function Canvas({
             previewConnection={previewConnection}
             selectedEdgeId={selectedEdgeId}
           />
+
+          {Object.values(collaboratorCursors || {}).map((cursor) => (
+            <div
+              className="pointer-events-none absolute z-20"
+              key={cursor.id}
+              style={{ transform: `translate(${cursor.x}px, ${cursor.y}px)` }}
+            >
+              <div className="relative -translate-x-1 -translate-y-1">
+                <svg
+                  className="drop-shadow-[0_10px_18px_rgba(2,6,23,0.45)]"
+                  fill="none"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  width="24"
+                >
+                  <path
+                    d="M4 3L17.5 12.4L11 13.8L13.6 20.5L10.9 21.5L8.2 14.9L4 19V3Z"
+                    fill={cursor.color}
+                    stroke="rgba(2, 6, 23, 0.82)"
+                    strokeWidth="1.4"
+                  />
+                </svg>
+
+                <div
+                  className="absolute left-4 top-5 inline-flex min-w-[92px] items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium text-white shadow-lg backdrop-blur-sm"
+                  style={{
+                    backgroundColor: hexToRgba(cursor.color, 0.2),
+                    borderColor: hexToRgba(cursor.color, 0.5),
+                  }}
+                >
+                  <span
+                    className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold uppercase"
+                    style={{
+                      backgroundColor: hexToRgba(cursor.color, 0.24),
+                      color: cursor.color,
+                    }}
+                  >
+                    {getInitials(cursor.name)}
+                  </span>
+                  <span className="max-w-[140px] truncate">{cursor.name}</span>
+                </div>
+              </div>
+            </div>
+          ))}
 
           {nodes.map((node) => (
             <Node

@@ -4,6 +4,9 @@ const Canvas = require("../models/Canvas");
 const User = require("../models/User");
 const { extractToken, getSafeUser, verifyAuthToken } = require("../utils/authToken");
 
+const PRESENCE_COLORS = ["#22d3ee", "#34d399", "#f59e0b", "#60a5fa", "#f472b6", "#a78bfa", "#fb7185"];
+const roomPresence = new Map();
+
 function getCanvasId(payload) {
   if (typeof payload === "string") {
     return payload.trim();
@@ -18,6 +21,83 @@ function getCanvasId(payload) {
 
 function getSocketToken(socket) {
   return extractToken(socket.handshake.auth?.token || socket.handshake.headers?.authorization);
+}
+
+function getPresenceColor(userId) {
+  const normalizedId = String(userId || "");
+  let hash = 0;
+
+  for (let index = 0; index < normalizedId.length; index += 1) {
+    hash = normalizedId.charCodeAt(index) + ((hash << 5) - hash);
+  }
+
+  return PRESENCE_COLORS[Math.abs(hash) % PRESENCE_COLORS.length];
+}
+
+function getSerializedRoomPresence(canvasId) {
+  const roomUsers = roomPresence.get(canvasId);
+
+  if (!roomUsers) {
+    return [];
+  }
+
+  return Array.from(roomUsers.values())
+    .map((user) => ({ ...user }))
+    .sort((leftUser, rightUser) => leftUser.name.localeCompare(rightUser.name));
+}
+
+function broadcastRoomPresence(io, canvasId) {
+  if (!canvasId) {
+    return;
+  }
+
+  io.to(canvasId).emit("room-presence-updated", {
+    canvasId,
+    users: getSerializedRoomPresence(canvasId),
+  });
+}
+
+function addSocketToRoomPresence(canvasId, user, socketId) {
+  const normalizedCanvasId = String(canvasId || "").trim();
+
+  if (!normalizedCanvasId || !user?.id) {
+    return;
+  }
+
+  let roomUsers = roomPresence.get(normalizedCanvasId);
+
+  if (!roomUsers) {
+    roomUsers = new Map();
+    roomPresence.set(normalizedCanvasId, roomUsers);
+  }
+
+  roomUsers.set(socketId, {
+    color: getPresenceColor(user.id),
+    email: user.email,
+    id: user.id,
+    name: user.name,
+    sessionId: socketId,
+  });
+}
+
+function removeSocketFromRoomPresence(canvasId, socketId) {
+  const normalizedCanvasId = String(canvasId || "").trim();
+
+  if (!normalizedCanvasId || !socketId) {
+    return;
+  }
+
+  const roomUsers = roomPresence.get(normalizedCanvasId);
+
+  if (!roomUsers) {
+    return;
+  }
+
+  roomUsers.delete(socketId);
+
+  if (!roomUsers.size) {
+    roomPresence.delete(normalizedCanvasId);
+  }
 }
 
 function registerCanvasSocket(io) {
@@ -49,6 +129,30 @@ function registerCanvasSocket(io) {
     console.log(`Socket connected: ${socket.id}`);
     socket.emit("server:ready", { socketId: socket.id });
 
+    function leaveCanvasRoom(canvasId = socket.data.canvasId) {
+      const activeCanvasId = getCanvasId(canvasId);
+
+      if (!activeCanvasId) {
+        return;
+      }
+
+      socket.leave(activeCanvasId);
+      removeSocketFromRoomPresence(activeCanvasId, socket.id);
+      socket.to(activeCanvasId).emit("server-cursor-update", {
+        canvasId: activeCanvasId,
+        id: socket.data.user?.id,
+        isLeaving: true,
+        name: socket.data.user?.name,
+        socketId: socket.id,
+      });
+
+      if (socket.data.canvasId === activeCanvasId) {
+        socket.data.canvasId = "";
+      }
+
+      broadcastRoomPresence(io, activeCanvasId);
+    }
+
     async function joinCanvasRoom(payload) {
       const canvasId = getCanvasId(payload);
 
@@ -78,12 +182,18 @@ function registerCanvasSocket(io) {
       }
 
       if (socket.data.canvasId && socket.data.canvasId !== canvasId) {
-        socket.leave(socket.data.canvasId);
+        leaveCanvasRoom(socket.data.canvasId);
       }
 
       socket.data.canvasId = canvasId;
       socket.join(canvasId);
-      socket.emit("canvas:joined", { canvasId, socketId: socket.id });
+      addSocketToRoomPresence(canvasId, socket.data.user, socket.id);
+      broadcastRoomPresence(io, canvasId);
+      socket.emit("canvas:joined", {
+        canvasId,
+        socketId: socket.id,
+        users: getSerializedRoomPresence(canvasId),
+      });
     }
 
     function broadcastNodeDrag(payload) {
@@ -128,6 +238,32 @@ function registerCanvasSocket(io) {
       socket.to(canvasId).emit("canvas-updated", update);
     }
 
+    function broadcastCursorMove(payload) {
+      const canvasId = getCanvasId(payload);
+
+      if (
+        !canvasId ||
+        canvasId !== socket.data.canvasId ||
+        typeof payload?.x !== "number" ||
+        typeof payload?.y !== "number"
+      ) {
+        return;
+      }
+
+      socket.to(canvasId).emit("server-cursor-update", {
+        canvasId,
+        color: getPresenceColor(socket.data.user.id),
+        email: socket.data.user.email,
+        id: socket.data.user.id,
+        isLeaving: false,
+        name: socket.data.user.name,
+        sentAt: Date.now(),
+        socketId: socket.id,
+        x: payload.x,
+        y: payload.y,
+      });
+    }
+
     socket.on("join-canvas", (payload) => {
       void joinCanvasRoom(payload);
     });
@@ -137,8 +273,10 @@ function registerCanvasSocket(io) {
     socket.on("node-drag", broadcastNodeDrag);
     socket.on("canvas:node:moved", broadcastNodeDrag);
     socket.on("canvas-updated", broadcastCanvasUpdate);
+    socket.on("client-cursor-move", broadcastCursorMove);
 
     socket.on("disconnect", () => {
+      leaveCanvasRoom(socket.data.canvasId);
       console.log(`Socket disconnected: ${socket.id}`);
     });
   });

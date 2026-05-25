@@ -17,6 +17,7 @@ import {
 
 import AIDrawer from "./components/AIDrawer";
 import InfraModal from "./components/InfraModal";
+import AvatarPresenceGroup from "./components/workspace/AvatarPresenceGroup";
 import Canvas from "./components/workspace/Canvas";
 import Sidebar from "./components/workspace/Sidebar";
 import { generateInfrastructure, getCanvas, runAICommand, updateCanvas } from "./services/api";
@@ -258,6 +259,42 @@ function isTextInputActive() {
   );
 }
 
+function buildPresenceList(users) {
+  return Array.isArray(users)
+    ? users
+        .filter((user) => user && typeof user.id === "string" && typeof user.name === "string")
+        .map((user) => ({
+          color: typeof user.color === "string" ? user.color : "#22d3ee",
+          email: typeof user.email === "string" ? user.email : "",
+          id: user.id,
+          name: user.name,
+          sessionId: typeof user.sessionId === "string" ? user.sessionId : user.id,
+        }))
+    : [];
+}
+
+function pruneCollaboratorCursors(cursors, options = {}) {
+  const allowedUserIds = options.allowedUserIds || null;
+  const maxAgeMs = options.maxAgeMs ?? Number.POSITIVE_INFINITY;
+  const now = options.now ?? Date.now();
+  const nextCursors = {};
+  let didChange = false;
+
+  Object.entries(cursors).forEach(([cursorId, cursor]) => {
+    const isAllowed = !allowedUserIds || allowedUserIds.has(cursorId);
+    const isFresh = now - (cursor.lastSeenAt || 0) <= maxAgeMs;
+
+    if (isAllowed && isFresh) {
+      nextCursors[cursorId] = cursor;
+      return;
+    }
+
+    didChange = true;
+  });
+
+  return didChange ? nextCursors : cursors;
+}
+
 export default function App({ currentUser, initialCanvasId = "", onNavigateToCanvas, onOpenDashboard, onLogout }) {
   const [canvasId, setCanvasId] = useState(() => initialCanvasId || getInitialCanvasId());
   const [joinedCanvasId, setJoinedCanvasId] = useState("");
@@ -284,6 +321,8 @@ export default function App({ currentUser, initialCanvasId = "", onNavigateToCan
     ),
   ]);
   const [socketStatus, setSocketStatus] = useState("idle");
+  const [roomPresence, setRoomPresence] = useState([]);
+  const [collaboratorCursors, setCollaboratorCursors] = useState({});
   const [notice, setNotice] = useState({
     tone: "info",
     text: "Paste a canvas id to load MongoDB state, or start refining the starter architecture on the board.",
@@ -295,8 +334,10 @@ export default function App({ currentUser, initialCanvasId = "", onNavigateToCan
   const edgesRef = useRef(edges);
   const titleRef = useRef(title);
   const dragEmitterRef = useRef(null);
+  const cursorEmitterRef = useRef(null);
   const loadedCanvasIdRef = useRef("");
   const canvasSurfaceRef = useRef(null);
+  const currentUserIdRef = useRef(currentUser?.id || "");
   const exportMenuRef = useRef(null);
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) || null;
@@ -304,10 +345,15 @@ export default function App({ currentUser, initialCanvasId = "", onNavigateToCan
   const socketStatusAppearance = getSocketStatusAppearance(socketStatus);
   const NoticeIcon = noticeAppearance.icon;
   const isBusy = isLoadingCanvas || isSaving || isGeneratingInfra;
+  const currentUserId = currentUser?.id || "";
   const aiExamplePrompts = [
     "Add a Redis node named Session Cache",
     "Connect React Storefront to Express API",
   ];
+
+  useEffect(() => {
+    currentUserIdRef.current = currentUser?.id || "";
+  }, [currentUser]);
 
   useEffect(() => {
     joinedCanvasIdRef.current = joinedCanvasId;
@@ -315,6 +361,26 @@ export default function App({ currentUser, initialCanvasId = "", onNavigateToCan
     edgesRef.current = edges;
     titleRef.current = title;
   }, [edges, joinedCanvasId, nodes, title]);
+
+  useEffect(() => {
+    setRoomPresence([]);
+    setCollaboratorCursors({});
+  }, [joinedCanvasId]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setCollaboratorCursors((currentCursors) =>
+        pruneCollaboratorCursors(currentCursors, {
+          maxAgeMs: 5000,
+          now: Date.now(),
+        }),
+      );
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isExportMenuOpen) {
@@ -352,6 +418,11 @@ export default function App({ currentUser, initialCanvasId = "", onNavigateToCan
         socketRef.current.emit("node-drag", payload);
       }
     }, 16);
+    cursorEmitterRef.current = createRafThrottle((payload) => {
+      if (socketRef.current?.connected) {
+        socketRef.current.emit("client-cursor-move", payload);
+      }
+    }, 40);
 
     function handleConnect() {
       const activeCanvasId = joinedCanvasIdRef.current;
@@ -364,6 +435,9 @@ export default function App({ currentUser, initialCanvasId = "", onNavigateToCan
     }
 
     function handleDisconnect(reason) {
+      setRoomPresence([]);
+      setCollaboratorCursors({});
+
       if (!joinedCanvasIdRef.current) {
         setSocketStatus("idle");
         return;
@@ -433,23 +507,89 @@ export default function App({ currentUser, initialCanvasId = "", onNavigateToCan
       }
     }
 
+    function handleRoomPresenceUpdated(payload) {
+      if (payload?.canvasId !== joinedCanvasIdRef.current) {
+        return;
+      }
+
+      const nextPresence = buildPresenceList(payload.users);
+      const allowedUserIds = new Set(
+        nextPresence
+          .map((user) => user.sessionId)
+          .filter((sessionId) => sessionId && sessionId !== socket.id),
+      );
+
+      setRoomPresence(nextPresence);
+      setCollaboratorCursors((currentCursors) =>
+        pruneCollaboratorCursors(currentCursors, {
+          allowedUserIds,
+        }),
+      );
+    }
+
+    function handleCursorUpdate(payload) {
+      if (
+        payload?.canvasId !== joinedCanvasIdRef.current ||
+        typeof payload?.socketId !== "string" ||
+        payload.socketId === socket.id ||
+        typeof payload?.name !== "string" ||
+        (!payload?.isLeaving && (typeof payload?.x !== "number" || typeof payload?.y !== "number"))
+      ) {
+        return;
+      }
+
+      if (payload.isLeaving) {
+        setCollaboratorCursors((currentCursors) => {
+          if (!currentCursors[payload.socketId]) {
+            return currentCursors;
+          }
+
+          const nextCursors = { ...currentCursors };
+
+          delete nextCursors[payload.socketId];
+          return nextCursors;
+        });
+        return;
+      }
+
+      setCollaboratorCursors((currentCursors) => ({
+        ...currentCursors,
+        [payload.socketId]: {
+          color: typeof payload.color === "string" ? payload.color : "#22d3ee",
+          email: typeof payload.email === "string" ? payload.email : "",
+          id: payload.id,
+          lastSeenAt: Date.now(),
+          name: payload.name,
+          sessionId: payload.socketId,
+          x: payload.x,
+          y: payload.y,
+        },
+      }));
+    }
+
     socket.on("connect", handleConnect);
     socket.on("disconnect", handleDisconnect);
     socket.on("connect_error", handleConnectError);
     socket.on("node-drag", handleNodeDrag);
     socket.on("canvas-updated", handleCanvasUpdated);
+    socket.on("room-presence-updated", handleRoomPresenceUpdated);
+    socket.on("server-cursor-update", handleCursorUpdate);
     manager.on("reconnect_attempt", handleReconnectAttempt);
     manager.on("reconnect_failed", handleReconnectFailed);
 
     return () => {
       dragEmitterRef.current?.cancel();
       dragEmitterRef.current = null;
+      cursorEmitterRef.current?.cancel();
+      cursorEmitterRef.current = null;
 
       socket.off("connect", handleConnect);
       socket.off("disconnect", handleDisconnect);
       socket.off("connect_error", handleConnectError);
       socket.off("node-drag", handleNodeDrag);
       socket.off("canvas-updated", handleCanvasUpdated);
+      socket.off("room-presence-updated", handleRoomPresenceUpdated);
+      socket.off("server-cursor-update", handleCursorUpdate);
       manager.off("reconnect_attempt", handleReconnectAttempt);
       manager.off("reconnect_failed", handleReconnectFailed);
       socket.disconnect();
@@ -532,6 +672,26 @@ export default function App({ currentUser, initialCanvasId = "", onNavigateToCan
       canvasId: activeCanvasId,
       nodeId,
       position,
+    });
+  }
+
+  function handleCanvasCursorMove(position) {
+    const socket = socketRef.current;
+    const activeCanvasId = joinedCanvasIdRef.current;
+
+    if (
+      !socket?.connected ||
+      !activeCanvasId ||
+      typeof position?.x !== "number" ||
+      typeof position?.y !== "number"
+    ) {
+      return;
+    }
+
+    cursorEmitterRef.current?.schedule({
+      canvasId: activeCanvasId,
+      x: position.x,
+      y: position.y,
     });
   }
 
@@ -1110,6 +1270,10 @@ export default function App({ currentUser, initialCanvasId = "", onNavigateToCan
                     </span>
                   ) : null}
 
+                  {joinedCanvasId ? (
+                    <AvatarPresenceGroup currentUserId={currentUserId} users={roomPresence} />
+                  ) : null}
+
                   {currentUser ? (
                     <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/70 px-3 py-1.5 text-xs font-medium text-slate-200">
                       <ShieldCheck className="h-3.5 w-3.5 text-emerald-200" />
@@ -1284,6 +1448,7 @@ export default function App({ currentUser, initialCanvasId = "", onNavigateToCan
             >
               <Canvas
                 canvasId={joinedCanvasId || canvasId}
+                collaboratorCursors={collaboratorCursors}
                 connectingSourceId={connectingSourceId}
                 edges={edges}
                 nodes={nodes}
@@ -1294,6 +1459,7 @@ export default function App({ currentUser, initialCanvasId = "", onNavigateToCan
                 onResizeNode={handleResizeNode}
                 onSelectEdge={handleEdgeSelect}
                 onSelectNode={handleNodeSelect}
+                onSurfacePointerMove={handleCanvasCursorMove}
                 onStartConnection={handleStartConnection}
                 selectedEdgeId={selectedEdgeId}
                 selectedNodeId={selectedNodeId}
