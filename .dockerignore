@@ -1,0 +1,15 @@
+.git
+.gitignore
+.ai_check.log
+.ai_npm_build.log
+.ai_npm_install.log
+.ai_require.log
+node_modules
+client/node_modules
+server/node_modules
+client/dist
+server/dist
+.env
+client/.env
+server/.env
+*.log

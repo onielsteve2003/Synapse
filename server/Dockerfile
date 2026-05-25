@@ -1,0 +1,25 @@
+FROM node:20-alpine AS deps
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+COPY client/package.json client/package.json
+COPY server/package.json server/package.json
+
+RUN npm ci --omit=dev --workspace server
+
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=4000
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY server ./server
+
+WORKDIR /app/server
+
+EXPOSE 4000
+
+CMD ["node", "src/index.js"]

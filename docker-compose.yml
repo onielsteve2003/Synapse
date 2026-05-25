@@ -1,0 +1,63 @@
+name: synapse
+
+services:
+  synapse-db:
+    image: mongo:latest
+    restart: unless-stopped
+    volumes:
+      - synapse-mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "quit(db.adminCommand({ ping: 1 }).ok ? 0 : 2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - synapse-network
+
+  synapse-server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - path: ./server/.env
+        required: false
+    environment:
+      CLIENT_ORIGIN: http://localhost:5173
+      DOCKER_RUNTIME: "true"
+      NODE_ENV: production
+      PORT: 4000
+    depends_on:
+      synapse-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    ports:
+      - "4000:4000"
+    networks:
+      - synapse-network
+
+  synapse-client:
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      synapse-server:
+        condition: service_healthy
+    ports:
+      - "5173:80"
+    networks:
+      - synapse-network
+
+networks:
+  synapse-network:
+    driver: bridge
+
+volumes:
+  synapse-mongo-data:
