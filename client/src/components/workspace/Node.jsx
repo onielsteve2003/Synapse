@@ -123,43 +123,6 @@ export default function Node({
         <Trash2 className="h-4 w-4" />
       </button>
 
-      <div
-        className={[
-          "absolute left-4 top-4 z-10 inline-flex items-center gap-1 rounded-full border border-white/10 bg-slate-950/85 p-1 text-slate-300 shadow-lg transition",
-          isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
-        ].join(" ")}
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-        }}
-        onPointerDown={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-        }}
-      >
-        <button
-          aria-label={`Reduce size of ${node.data?.label || node.id}`}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-full transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-35"
-          disabled={!canDecreaseSize}
-          onClick={() => onResizeNode(node.id, "decrease")}
-          type="button"
-        >
-          <Minus className="h-4 w-4" />
-        </button>
-        <span className="min-w-[64px] px-1 text-center text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400">
-          {getNodeSizeLabel(nodeSize)}
-        </span>
-        <button
-          aria-label={`Increase size of ${node.data?.label || node.id}`}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-full transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-35"
-          disabled={!canIncreaseSize}
-          onClick={() => onResizeNode(node.id, "increase")}
-          type="button"
-        >
-          <Plus className="h-4 w-4" />
-        </button>
-      </div>
-
       <button
         aria-label={`Create connection from ${node.data?.label || node.id}`}
         className={[
@@ -204,6 +167,44 @@ export default function Node({
           <h3 className="mt-2 font-display text-lg font-semibold text-white">
             {node.data?.label || "Untitled Node"}
           </h3>
+        </div>
+
+        <div
+          className="mt-4 flex items-center justify-between gap-3 rounded-[1rem] border border-white/10 bg-slate-900/70 px-3 py-2"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+        >
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-slate-500">Size</p>
+            <p className="mt-1 text-xs font-medium text-slate-300">{getNodeSizeLabel(nodeSize)}</p>
+          </div>
+
+          <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-slate-950/80 p-1 text-slate-300 shadow-sm">
+            <button
+              aria-label={`Reduce size of ${node.data?.label || node.id}`}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-35"
+              disabled={!canDecreaseSize}
+              onClick={() => onResizeNode(node.id, "decrease")}
+              type="button"
+            >
+              <Minus className="h-4 w-4" />
+            </button>
+            <button
+              aria-label={`Increase size of ${node.data?.label || node.id}`}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-35"
+              disabled={!canIncreaseSize}
+              onClick={() => onResizeNode(node.id, "increase")}
+              type="button"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
