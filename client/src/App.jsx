@@ -21,6 +21,7 @@ import AvatarPresenceGroup from "./components/workspace/AvatarPresenceGroup";
 import Canvas from "./components/workspace/Canvas";
 import Sidebar from "./components/workspace/Sidebar";
 import { generateInfrastructure, getCanvas, runAICommand, updateCanvas } from "./services/api";
+import { compileBlueprints } from "./utils/blueprintCompiler";
 import { getWorkspaceSocket } from "./services/socket";
 import { createRafThrottle } from "./utils/createRafThrottle";
 
@@ -117,6 +118,13 @@ function createExportFileName(title, extension) {
   return `${sanitizedTitle || "synapse-diagram"}.${extension}`;
 }
 
+function createBlueprintFileName(title, baseName, extension) {
+  const normalizedTitle = typeof title === "string" ? title.trim().toLowerCase() : "";
+  const sanitizedTitle = normalizedTitle.replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
+  return `${sanitizedTitle || "synapse"}-${baseName}.${extension}`;
+}
+
 function downloadDataUrl(dataUrl, fileName) {
   const link = document.createElement("a");
 
@@ -125,6 +133,19 @@ function downloadDataUrl(dataUrl, fileName) {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+}
+
+function downloadTextFile(content, fileName, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = objectUrl;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(objectUrl);
 }
 
 function createDrawerMessage(role, text) {
@@ -307,7 +328,9 @@ export default function App({ currentUser, initialCanvasId = "", onNavigateToCan
   const [generatedInfra, setGeneratedInfra] = useState(null);
   const [isInfraModalOpen, setIsInfraModalOpen] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [isBlueprintMenuOpen, setIsBlueprintMenuOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportingBlueprint, setIsExportingBlueprint] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState(null);
   const [isLoadingCanvas, setIsLoadingCanvas] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -338,6 +361,7 @@ export default function App({ currentUser, initialCanvasId = "", onNavigateToCan
   const loadedCanvasIdRef = useRef("");
   const canvasSurfaceRef = useRef(null);
   const currentUserIdRef = useRef(currentUser?.id || "");
+  const blueprintMenuRef = useRef(null);
   const exportMenuRef = useRef(null);
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) || null;
@@ -383,19 +407,27 @@ export default function App({ currentUser, initialCanvasId = "", onNavigateToCan
   }, []);
 
   useEffect(() => {
-    if (!isExportMenuOpen) {
+    if (!isExportMenuOpen && !isBlueprintMenuOpen) {
       return undefined;
     }
 
     function handlePointerDown(event) {
-      if (!exportMenuRef.current?.contains(event.target)) {
+      const clickedInsideExportMenu = exportMenuRef.current?.contains(event.target);
+      const clickedInsideBlueprintMenu = blueprintMenuRef.current?.contains(event.target);
+
+      if (!clickedInsideExportMenu) {
         setIsExportMenuOpen(false);
+      }
+
+      if (!clickedInsideBlueprintMenu) {
+        setIsBlueprintMenuOpen(false);
       }
     }
 
     function handleEscape(event) {
       if (event.key === "Escape") {
         setIsExportMenuOpen(false);
+        setIsBlueprintMenuOpen(false);
       }
     }
 
@@ -406,7 +438,7 @@ export default function App({ currentUser, initialCanvasId = "", onNavigateToCan
       window.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("keydown", handleEscape);
     };
-  }, [isExportMenuOpen]);
+  }, [isBlueprintMenuOpen, isExportMenuOpen]);
 
   useEffect(() => {
     const socket = getWorkspaceSocket();
@@ -1207,6 +1239,58 @@ export default function App({ currentUser, initialCanvasId = "", onNavigateToCan
     }
   }
 
+  function handleExportBlueprint(format) {
+    const normalizedFormat = format === "terraform" ? "terraform" : "docker";
+
+    setIsBlueprintMenuOpen(false);
+    setIsExportingBlueprint(true);
+    setNotice({
+      tone: "loading",
+      text:
+        normalizedFormat === "docker"
+          ? "Compiling Docker Compose blueprint from the active canvas..."
+          : "Compiling Terraform blueprint from the active canvas...",
+    });
+
+    try {
+      const blueprints = compileBlueprints({
+        edges,
+        nodes,
+        title,
+      });
+
+      if (normalizedFormat === "docker") {
+        downloadTextFile(
+          blueprints.dockerCompose,
+          createBlueprintFileName(title || joinedCanvasId || canvasId || "synapse", "docker-compose", "yml"),
+          "application/x-yaml;charset=utf-8",
+        );
+        setNotice({
+          tone: "success",
+          text: `Docker Compose blueprint exported from ${blueprints.topology.nodes.length} node${blueprints.topology.nodes.length === 1 ? "" : "s"}.`,
+        });
+        return;
+      }
+
+      downloadTextFile(
+        blueprints.terraform,
+        createBlueprintFileName(title || joinedCanvasId || canvasId || "synapse", "terraform-blueprint", "tf"),
+        "text/plain;charset=utf-8",
+      );
+      setNotice({
+        tone: "success",
+        text: `Terraform blueprint exported from ${blueprints.topology.nodes.length} node${blueprints.topology.nodes.length === 1 ? "" : "s"}.`,
+      });
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        text: error.message || "The blueprint export failed.",
+      });
+    } finally {
+      setIsExportingBlueprint(false);
+    }
+  }
+
   useEffect(() => {
     if (!selectedEdgeId || isInfraModalOpen) {
       return undefined;
@@ -1294,7 +1378,7 @@ export default function App({ currentUser, initialCanvasId = "", onNavigateToCan
                 </div>
               </div>
 
-              <div className="grid gap-3 md:grid-cols-[auto_minmax(0,260px)_auto_auto_auto_auto] xl:min-w-[1180px]">
+              <div className="grid gap-3 md:grid-cols-[auto_minmax(0,260px)_auto_auto_auto_auto_auto] xl:min-w-[1360px]">
                 {onOpenDashboard ? (
                   <button
                     className="inline-flex items-center justify-center gap-2 rounded-[1.4rem] border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-white transition hover:border-cyan-300/30 hover:bg-white/10"
@@ -1369,6 +1453,49 @@ export default function App({ currentUser, initialCanvasId = "", onNavigateToCan
                       >
                         Download SVG
                         <span className="text-xs uppercase tracking-[0.24em] text-slate-500">vector</span>
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="relative" ref={blueprintMenuRef}>
+                  <button
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-[1.4rem] border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-white transition hover:border-cyan-300/30 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={isExportingBlueprint}
+                    onClick={() => setIsBlueprintMenuOpen((currentValue) => !currentValue)}
+                    type="button"
+                  >
+                    {isExportingBlueprint ? (
+                      <LoaderCircle className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <FileCode2 className="h-4 w-4" />
+                    )}
+                    Export Blueprint
+                    <ChevronDown
+                      className={[
+                        "h-4 w-4 transition",
+                        isBlueprintMenuOpen ? "rotate-180" : "rotate-0",
+                      ].join(" ")}
+                    />
+                  </button>
+
+                  {isBlueprintMenuOpen ? (
+                    <div className="absolute right-0 z-20 mt-2 w-64 rounded-[1.2rem] border border-white/10 bg-slate-950/95 p-2 shadow-panel backdrop-blur-sm">
+                      <button
+                        className="flex w-full items-center justify-between rounded-[1rem] px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-white/5"
+                        onClick={() => handleExportBlueprint("docker")}
+                        type="button"
+                      >
+                        Download Docker Compose (.yml)
+                        <span className="text-xs uppercase tracking-[0.24em] text-slate-500">yaml</span>
+                      </button>
+                      <button
+                        className="mt-1 flex w-full items-center justify-between rounded-[1rem] px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-white/5"
+                        onClick={() => handleExportBlueprint("terraform")}
+                        type="button"
+                      >
+                        Download Terraform Blueprint (.tf)
+                        <span className="text-xs uppercase tracking-[0.24em] text-slate-500">iac</span>
                       </button>
                     </div>
                   ) : null}
