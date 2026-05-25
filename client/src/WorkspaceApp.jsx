@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import App from "./App";
+import WorkspaceErrorBoundary from "./components/WorkspaceErrorBoundary";
 import DashboardView from "./components/DashboardView";
 import Login from "./components/Login";
 import Signup from "./components/Signup";
@@ -123,6 +124,7 @@ function navigateTo(path, options = {}) {
 
 export default function WorkspaceApp() {
   const [route, setRoute] = useState(() => getRouteState());
+  const [workspaceResetVersion, setWorkspaceResetVersion] = useState(0);
   const { isAuthenticated, isReady, logout, user } = useAuth();
 
   useEffect(() => {
@@ -173,6 +175,10 @@ export default function WorkspaceApp() {
     setRoute(navigateTo(buildAuthPath("login"), { replace: true }));
   }
 
+  function handleResetViewport() {
+    setWorkspaceResetVersion((currentValue) => currentValue + 1);
+  }
+
   if (!isReady) {
     return (
       <div className="min-h-screen px-4 py-6 sm:px-6 lg:px-8">
@@ -204,14 +210,19 @@ export default function WorkspaceApp() {
   }
 
   if (route.page === "editor") {
+    const workspaceResetToken = `${route.canvasId}:${workspaceResetVersion}`;
+
     return (
-      <App
-        currentUser={user}
-        initialCanvasId={route.canvasId}
-        onNavigateToCanvas={handleOpenCanvas}
-        onOpenDashboard={handleOpenDashboard}
-        onLogout={handleLogout}
-      />
+      <WorkspaceErrorBoundary onReset={handleResetViewport} resetToken={workspaceResetToken}>
+        <App
+          key={workspaceResetToken}
+          currentUser={user}
+          initialCanvasId={route.canvasId}
+          onNavigateToCanvas={handleOpenCanvas}
+          onOpenDashboard={handleOpenDashboard}
+          onLogout={handleLogout}
+        />
+      </WorkspaceErrorBoundary>
     );
   }
 

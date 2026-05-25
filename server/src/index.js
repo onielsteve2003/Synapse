@@ -37,7 +37,9 @@ async function startServer() {
       console.log(`Synapse server listening on http://localhost:${env.PORT}`);
     });
   } catch (error) {
-    console.error("Failed to start Synapse server.", error);
+    const message = error instanceof Error ? error.message : "Unknown startup failure.";
+
+    console.error(`Failed to start Synapse server. ${message}`);
     process.exit(1);
   }
 }
